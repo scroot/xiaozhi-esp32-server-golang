@@ -23,6 +23,8 @@ type WebSocketServer struct {
 	clientStates sync.Map
 	// 认证管理器
 	authManager *auth.AuthManager
+	// 地址
+	host string
 	// 端口
 	port int
 	// MCP管理器
@@ -56,7 +58,7 @@ func WithOnNewConnection(onNewConnection types.OnNewConnection) WebSocketServerO
 }
 
 // NewWebSocketServer 创建新的 WebSocket 服务器（WithOption 方式）
-func NewWebSocketServer(port int, opts ...WebSocketServerOption) *WebSocketServer {
+func NewWebSocketServer(port int,host string, opts ...WebSocketServerOption) *WebSocketServer {
 	s := &WebSocketServer{
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
@@ -68,6 +70,7 @@ func NewWebSocketServer(port int, opts ...WebSocketServerOption) *WebSocketServe
 		// 默认值
 		authManager:      auth.A(),
 		port:             port,
+		host:             host,
 		globalMCPManager: mcp.GetGlobalMCPManager(),
 	}
 	for _, opt := range opts {
@@ -96,7 +99,7 @@ func (s *WebSocketServer) Start() error {
 	http.HandleFunc("/xiaozhi/api/mcp/tools/", s.handleMCPAPI)
 	http.HandleFunc("/xiaozhi/api/vision", s.handleVisionAPI) //图片识别API
 
-	listenAddr := fmt.Sprintf("0.0.0.0:%d", s.port)
+	listenAddr := fmt.Sprintf("%s:%d",s.host, s.port)
 	log.Infof("WebSocket 服务器启动在 ws://%s/xiaozhi/v1/", listenAddr)
 	log.Infof("MCP WebSocket 端点: ws://%s/xiaozhi/mcp/{deviceId}", listenAddr)
 	log.Infof("MCP API 端点: http://%s/xiaozhi/api/mcp/tools/{deviceId}", listenAddr)
