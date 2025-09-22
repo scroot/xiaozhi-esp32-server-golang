@@ -17,18 +17,15 @@ import (
 
 // DeviceMcpSession 代表一个设备的MCP会话，聚合了多种MCP连接
 type DeviceMcpSession struct {
-	lock          sync.RWMutex
 	deviceID      string
 	Ctx           context.Context
 	cancel        context.CancelFunc
-	wsEndPointMcp map[string]*McpClientInstance
+	wsEndPointMcp sync.Map
 	iotOverMcp    *McpClientInstance
 }
 
 func (dcs *DeviceMcpSession) AddWsEndPointMcp(mcpClient *McpClientInstance) {
-	dcs.lock.Lock()
-	defer dcs.lock.Unlock()
-	dcs.wsEndPointMcp[mcpClient.serverName] = mcpClient
+	dcs.wsEndPointMcp.Store(mcpClient.serverName, mcpClient)
 
 	// 设置关闭回调
 	mcpClient.SetOnCloseHandler(dcs.handleMcpClientClose)
@@ -47,9 +44,7 @@ func (dcs *DeviceMcpSession) SetIotOverMcp(mcpClient *McpClientInstance) {
 }
 
 func (dcs *DeviceMcpSession) RemoveWsEndPointMcp(mcpClient *McpClientInstance) {
-	dcs.lock.Lock()
-	defer dcs.lock.Unlock()
-	delete(dcs.wsEndPointMcp, mcpClient.serverName)
+	dcs.wsEndPointMcp.Delete(mcpClient.serverName)
 }
 
 // GetDeviceID 获取设备ID
@@ -93,10 +88,10 @@ func NewDeviceMCPSession(deviceID string) *DeviceMcpSession {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	deviceMcpClient := &DeviceMcpSession{
-		deviceID:      deviceID,
-		Ctx:           ctx,
-		cancel:        cancel,
-		wsEndPointMcp: make(map[string]*McpClientInstance),
+		deviceID: deviceID,
+		Ctx:      ctx,
+		cancel:   cancel,
+		// wsEndPointMcp: make(map[string]*McpClientInstance),
 	}
 
 	go deviceMcpClient.refreshToolsAndPing()
@@ -207,11 +202,11 @@ func (dc *DeviceMcpSession) refreshToolsAndPing() {
 	}
 
 	// 初始化时获取工具列表
-	dc.lock.RLock()
-	for _, mcpInstance := range dc.wsEndPointMcp {
-		findTools(mcpInstance)
-	}
-	dc.lock.RUnlock()
+	dc.wsEndPointMcp.Range(func(_, mcpInstance interface{}) bool {
+		findTools(mcpInstance.(*McpClientInstance))
+		return true
+	})
+
 	findTools(dc.iotOverMcp)
 
 	// 每2分钟进行一次ping
@@ -224,11 +219,10 @@ func (dc *DeviceMcpSession) refreshToolsAndPing() {
 			logger.Infof("设备 %s 会话已取消，停止ping", dc.deviceID)
 			return
 		case <-pingTick.C:
-			dc.lock.RLock()
-			for _, mcpInstance := range dc.wsEndPointMcp {
-				ping(mcpInstance)
-			}
-			dc.lock.RUnlock()
+			dc.wsEndPointMcp.Range(func(_, mcpInstance interface{}) bool {
+				ping(mcpInstance.(*McpClientInstance))
+				return true
+			})
 			//ping(dc.iotOverMcp)
 		}
 	}
@@ -338,15 +332,16 @@ func (dc *McpClientInstance) GetConnectionStatus() map[string]interface{} {
 // GetTools 获取工具列表
 func (dc *DeviceMcpSession) GetTools() map[string]tool.InvokableTool {
 	tools := make(map[string]tool.InvokableTool)
-	dc.lock.RLock()
-	for _, mcpInstance := range dc.wsEndPointMcp {
+	dc.wsEndPointMcp.Range(func(_, value interface{}) bool {
+		mcpInstance := value.(*McpClientInstance)
 		mcpInstance.toolsMux.RLock()
 		for k, v := range mcpInstance.tools {
 			tools[k] = v
 		}
 		mcpInstance.toolsMux.RUnlock()
-	}
-	dc.lock.RUnlock()
+		return true
+	})
+
 	if dc.iotOverMcp != nil {
 		dc.iotOverMcp.toolsMux.RLock()
 		for k, v := range dc.iotOverMcp.tools {
@@ -358,31 +353,30 @@ func (dc *DeviceMcpSession) GetTools() map[string]tool.InvokableTool {
 }
 
 func (dc *DeviceMcpSession) GetWsEndpointMcpTools() map[string]tool.InvokableTool {
-	dc.lock.RLock()
-	defer dc.lock.RUnlock()
 	tools := make(map[string]tool.InvokableTool)
-	for _, mcpInstance := range dc.wsEndPointMcp {
+	dc.wsEndPointMcp.Range(func(_, value interface{}) bool {
+		mcpInstance := value.(*McpClientInstance)
 		mcpInstance.toolsMux.RLock()
 		for k, v := range mcpInstance.tools {
 			tools[k] = v
 		}
 		mcpInstance.toolsMux.RUnlock()
-	}
+		return true
+	})
 	return tools
 }
 
-func (dc *DeviceMcpSession) GetToolByName(toolName string) (tool.InvokableTool, bool) {
-	dc.lock.RLock()
-	for _, mcpInstance := range dc.wsEndPointMcp {
+func (dc *DeviceMcpSession) GetToolByName(toolName string) (tool tool.InvokableTool, ok bool) {
+	dc.wsEndPointMcp.Range(func(_, value interface{}) bool {
+		mcpInstance := value.(*McpClientInstance)
 		mcpInstance.toolsMux.RLock()
-		if tool, ok := mcpInstance.tools[toolName]; ok {
+		if tool, ok = mcpInstance.tools[toolName]; ok {
 			mcpInstance.toolsMux.RUnlock()
-			dc.lock.RUnlock()
-			return tool, true
+			return false
 		}
 		mcpInstance.toolsMux.RUnlock()
-	}
-	dc.lock.RUnlock()
+		return true
+	})
 	if dc.iotOverMcp != nil {
 		dc.iotOverMcp.toolsMux.RLock()
 		if tool, ok := dc.iotOverMcp.tools[toolName]; ok {

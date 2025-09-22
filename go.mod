@@ -1,11 +1,10 @@
 module xiaozhi-esp32-server-golang
 
-go 1.23.9
+go 1.24.4
 
 require (
 	github.com/ThinkInAIXYZ/go-mcp v0.2.19
 	github.com/antonfisher/nested-logrus-formatter v1.3.1
-	github.com/bytedance/gopkg v0.1.3
 	github.com/bytedance/sonic v1.13.2
 	github.com/cloudwego/eino v0.3.40
 	github.com/cloudwego/eino-ext/components/model/ollama v0.0.0-20250530094010-bd1c4fc20bbe
@@ -26,6 +25,7 @@ require (
 	github.com/mochi-mqtt/server/v2 v2.7.9
 	github.com/orcaman/concurrent-map/v2 v2.0.1
 	github.com/redis/go-redis/v9 v9.7.3
+	github.com/scroot/music-sd v0.0.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/viper v1.20.1
 	github.com/streamer45/silero-vad-go v0.2.1
@@ -82,7 +82,6 @@ require (
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
-	github.com/xiph/opus v1.5.2 // indirect
 	github.com/yargevad/filepathx v1.0.0 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.uber.org/multierr v1.10.0 // indirect

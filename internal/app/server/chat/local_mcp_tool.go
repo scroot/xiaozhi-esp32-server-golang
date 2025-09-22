@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"time"
 
 	mcp_manager "xiaozhi-esp32-server-golang/internal/domain/mcp"
 	log "xiaozhi-esp32-server-golang/logger"
 
+	"github.com/scroot/music-sd/pkg/netease"
+	"github.com/scroot/music-sd/pkg/qq"
 	"github.com/spf13/viper"
 )
 
@@ -46,12 +47,12 @@ func InitChatLocalMCPTools() {
 			Params:      struct{}{},
 			Handle:      clearConversationHistoryHandler,
 		},
-		/*"play_music": {
+		"play_music": {
 			Name:        "play_music",
 			Description: "当用户想听歌、无聊时、想放空大脑时使用，用于播放指定名称的音乐，当用户想随便听一首音乐时请推荐出具体的歌曲名称，当有多个音乐播放工具时优先使用此工具，**此工具调用耗时较长，需要先返回友好的过渡性提示语**",
 			Params:      PlayMusicParams{},
 			Handle:      playMusicHandler,
-		},*/
+		},
 	}
 
 	for toolName, localTool := range localTools {
@@ -120,7 +121,7 @@ func playMusicHandler(ctx context.Context, argumentsInJSON string) (string, erro
 
 /*
 // getCurrentDateTimeHandler 获取当前时间和日期的处理函数
-func getCurrentDateTimeHandler(ctx context.Context, argumentsInJSON string) ([]mcp.Content, error) {
+func getCurrentDateTimeHandler(ctx context.Context, argumentsInJSON string) (string, error) {
 	log.Info("执行获取当前时间日期工具")
 
 	// 解析参数
@@ -169,11 +170,11 @@ func getCurrentDateTimeHandler(ctx context.Context, argumentsInJSON string) ([]m
 
 	// 创建内容类响应
 	response := NewContentResponse("get_current_datetime", data, fmt.Sprintf("当前时间：%s", formatChineseDateTime(now)))
-	response.Format = "datetime"
-	response.DisplayHint = "可用于显示当前日期时间信息"
+	// response.Format = "datetime"
+	// response.DisplayHint = "可用于显示当前日期时间信息"
 
 	log.Infof("获取当前时间日期成功: %s", now.Format("2006-01-02 15:04:05"))
-	return response.ToJSON()
+	return response.ToJSON(),nil
 }
 */
 // exitConversationHandler 退出对话的处理函数
@@ -312,7 +313,7 @@ func RegisterChatMCPTools() {
 	InitChatLocalMCPTools()
 }
 
-// 播放音乐
+/* // 播放音乐
 func GetMusicAudioData(ctx context.Context, musicParams *PlayMusicParams) ([]byte, string, error) {
 	musicName := musicParams.Name
 	//welcome := musicParams.Welcome
@@ -348,4 +349,39 @@ func GetMusicAudioData(ctx context.Context, musicParams *PlayMusicParams) ([]byt
 	log.Infof("获取音乐 %s 数据成功, 音频数据长度: %d", realMusicName, len(audioData))
 
 	return audioData, realMusicName, nil
+}*/
+
+func GetMusicAudioData(ctx context.Context, musicParams *PlayMusicParams) ([]byte, string, error) {
+	musicName := musicParams.Name
+	//welcome := musicParams.Welcome
+	welcome := ""
+	log.Infof("搜索音乐: %s 中, welcome: %s", musicName, welcome)
+	// 这里可以根据音乐名称获取音乐URL
+	// 目前简化实现，假设musicName就是URL或者从配置中获取
+	musicList := netease.Search(musicName)
+	musicList = append(musicList, qq.Search(musicName)...)
+	for id, music := range musicList {
+		log.Infof("[%2d] %7s | %s %5sMB - %s - %s - %s\n", id, music.Source, music.Duration, music.Size, music.Title, music.Singer, music.Album)
+	}
+
+	if len(musicList) <= 0 {
+		return nil, "", fmt.Errorf("没有找到音乐")
+	}
+	m := musicList[0]
+	m.ParseMusic()
+	rc, err := m.ReadCloser()
+	if err != nil {
+		return nil, "", fmt.Errorf("获取音乐数据失败: %v", err)
+	}
+	defer rc.Close()
+
+	audioData, err := io.ReadAll(rc)
+	if err != nil {
+		return nil, "", fmt.Errorf("读取响应失败: %v", err)
+	}
+
+	log.Infof("获取音乐 %s 数据成功, 音频数据长度: %d", m.Name, len(audioData))
+
+	return audioData, m.Name, nil
+
 }
